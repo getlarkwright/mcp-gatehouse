@@ -253,4 +253,4 @@ between runs. The suite runs over stdio and Streamable HTTP, in both enforce and
 
 ## License
 
-MIT
+MIT © Larkwright LLC

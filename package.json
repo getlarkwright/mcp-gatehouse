@@ -3,7 +3,15 @@
   "version": "0.1.0",
   "description": "A guard for any MCP server: tool allow/deny rules, secret redaction in both directions, prompt-injection and tool-poisoning checks, rug-pull pinning, and a JSONL audit log. Runs locally, no account, no telemetry.",
   "license": "MIT",
-  "author": "James Son",
+  "author": "Larkwright LLC",
+  "homepage": "https://github.com/getlarkwright/mcp-gatehouse#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getlarkwright/mcp-gatehouse.git"
+  },
+  "bugs": {
+    "url": "https://github.com/getlarkwright/mcp-gatehouse/issues"
+  },
   "type": "module",
   "bin": {
     "mcp-gatehouse": "src/index.js"

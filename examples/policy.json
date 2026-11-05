@@ -1,0 +1,68 @@
+{
+  "mode": "enforce",
+  "tools": {
+    "allow": [
+      "*"
+    ],
+    "deny": [
+      "*delete*",
+      "*drop*",
+      "*destroy*"
+    ]
+  },
+  "arguments": [
+    {
+      "tool": "*",
+      "deny_pattern": "\\brm\\s+-[a-z]*(r[a-z]*f|f[a-z]*r)",
+      "flags": "i",
+      "reason": "recursive force delete"
+    },
+    {
+      "tool": "*",
+      "deny_pattern": "(^|/)\\.ssh/|id_rsa|id_ed25519|/etc/shadow",
+      "flags": "i",
+      "reason": "credential file path"
+    }
+  ],
+  "secrets": {
+    "output": "redact",
+    "input": "block",
+    "exempt_tools": []
+  },
+  "injection": {
+    "output": "warn",
+    "descriptions": "hide",
+    "strip_invisible": true
+  },
+  "pinning": {
+    "enabled": true,
+    "on_change": "block",
+    "new_tools": "warn"
+  },
+  "rate_limit": {
+    "per_minute": 120,
+    "per_tool_per_minute": 0
+  },
+  "max_output_chars": 200000,
+  "audit": {
+    "file": "~/.mcp-gatehouse/audit.jsonl",
+    "arguments": "redacted"
+  },
+  "servers": {
+    "filesystem": {
+      "tools": {
+        "deny": [
+          "write_file",
+          "move_file"
+        ]
+      }
+    },
+    "vault": {
+      "secrets": {
+        "exempt_tools": [
+          "write_secret"
+        ]
+      }
+    }
+  }
+}

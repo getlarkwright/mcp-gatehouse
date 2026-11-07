@@ -36,7 +36,7 @@ The gatehouse handles each of these in one place, for every server, without chan
 
 ## Install
 
-Node 18 or newer.
+Node 20 or newer.
 
 ```bash
 git clone https://github.com/getlarkwright/mcp-gatehouse.git

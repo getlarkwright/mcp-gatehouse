@@ -164,11 +164,14 @@ const INJECTION_RULES = [
 /** Scan text for injection phrasing. Returns [{id, severity, excerpt}]. */
 export function findInjection(text) {
   if (typeof text !== "string" || text.length < 10) return [];
+  // Excerpts go to the audit log, so the WHOLE text is redacted before any excerpt is cut.
+  // Redacting only the excerpt would leak the tail of a secret whenever the excerpt window
+  // starts part-way through it: the fragment no longer matches the secret's pattern.
+  const safe = redactSecrets(text).text;
   const hits = [];
   for (const rule of INJECTION_RULES) {
-    const m = rule.re.exec(text);
-    // Excerpts go to the audit log, so they are redacted like everything else.
-    if (m) hits.push({ id: rule.id, severity: rule.severity, excerpt: redactSecrets(excerpt(text, m.index, m[0].length)).text });
+    const m = rule.re.exec(safe);
+    if (m) hits.push({ id: rule.id, severity: rule.severity, excerpt: excerpt(safe, m.index, m[0].length) });
   }
   return hits;
 }
@@ -262,10 +265,12 @@ export function scanValue(value, { redact = true, strip = true } = {}) {
     }
     return text;
   });
+  // Decoded tag text is logged and printed, so it is redacted in full before it is cut.
+  const safeHidden = redactSecrets(hidden).text;
   if (invisible.tag_characters && !seen.has("hidden_tag_text")) {
-    injection.push({ id: "hidden_tag_text", severity: "high", excerpt: hidden.slice(0, 160) || "(tag characters with no printable payload)" });
+    injection.push({ id: "hidden_tag_text", severity: "high", excerpt: safeHidden.slice(0, 160) || "(tag characters with no printable payload)" });
   }
-  return { value: out, secrets, invisible, hidden, injection };
+  return { value: out, secrets, invisible, hidden: safeHidden, injection };
 }
 
 export const SECRET_RULE_IDS = SECRET_RULES.map((r) => r.id);

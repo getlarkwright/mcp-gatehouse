@@ -1,6 +1,6 @@
 {
   "name": "mcp-gatehouse",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A guard for any MCP server: tool allow/deny rules, secret redaction in both directions, prompt-injection and tool-poisoning checks, rug-pull pinning, and a JSONL audit log. Runs locally, no account, no telemetry.",
   "license": "MIT",
   "author": "Larkwright LLC",

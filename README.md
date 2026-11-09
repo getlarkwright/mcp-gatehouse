@@ -39,10 +39,12 @@ The gatehouse handles each of these in one place, for every server, without chan
 Node 20 or newer.
 
 ```bash
-git clone https://github.com/getlarkwright/mcp-gatehouse.git
-cd mcp-gatehouse && npm install && npm install -g .
+npm install -g mcp-gatehouse
 mcp-gatehouse --help
 ```
+
+To run it without a global install, use `npx -y mcp-gatehouse@0.1.1` wherever the examples below say
+`mcp-gatehouse`. Pin the version: a security proxy should not change underneath you on its own.
 
 ## Wrap a server
 

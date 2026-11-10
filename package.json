@@ -1,6 +1,6 @@
 {
   "name": "mcp-gatehouse",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "A guard for any MCP server: tool allow/deny rules, secret redaction in both directions, prompt-injection and tool-poisoning checks, rug-pull pinning, and a JSONL audit log. Runs locally, no account, no telemetry.",
   "license": "MIT",
   "author": "Larkwright LLC",
@@ -44,6 +44,6 @@
   },
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test test/detect.test.mjs test/gate.test.mjs"
+    "test": "node --test test/detect.test.mjs test/gate.test.mjs test/audit.test.mjs"
   }
 }

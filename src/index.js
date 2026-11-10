@@ -3,6 +3,7 @@
 // Desktop, Cursor…) and any MCP server. The client launches the gatehouse; the
 // gatehouse launches (or connects to) the real server and checks every message.
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -12,8 +13,10 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { loadPolicy, locatePolicy, starterPolicy, HOME, expandHome } from "./lib/policy.js";
 import { AuditLog, readAudit, renderReport, parseSince } from "./lib/audit.js";
 import { Gate } from "./lib/gate.js";
-import { readPins, approve, listServers, pinFile, describeChange, safeName } from "./lib/pins.js";
+import { readPins, approve, listServers, pinFile, describeChange, safeName, deriveName } from "./lib/pins.js";
 import { scanValue } from "./lib/detect.js";
+import { knownSources, adHocSource, claudeProjectDirs, readSources } from "./lib/clients.js";
+import { runAudit, renderAudit } from "./lib/configaudit.js";
 
 const require = createRequire(import.meta.url);
 const VERSION = require("../package.json").version;
@@ -32,6 +35,10 @@ Options:
                       then built-in defaults)
   --monitor           log what would be blocked, change nothing
   --header "K: V"     extra HTTP header for --url (repeatable; \${VAR} expands from the environment)
+
+Audit this computer (reads the MCP config files of Claude Code, Claude Desktop, Cursor, VS Code,
+Windsurf, Cline, Roo Code, Gemini CLI, Zed and Codex; starts nothing unless you add --live):
+  mcp-gatehouse audit [--live] [--json] [--dir <project>] [--config <file>]
 
 Other commands:
   mcp-gatehouse report [--since 24h] [--server <name>] [--file audit.jsonl]
@@ -68,27 +75,6 @@ function parseFlags(argv, spec) {
     } else out._.push(a);
   }
   return out;
-}
-
-const RUNNERS = new Set(["npx", "bunx", "pnpm", "yarn", "uvx", "pipx", "deno", "docker"]);
-const INTERPRETERS = new Set(["node", "python", "python3", "bun", "ruby"]);
-
-/** Best-effort readable server name from the command line. */
-function deriveName(command, args) {
-  const base = path.basename(command).replace(/\.(exe|cmd|bat)$/i, "");
-  const firstReal = args.find((a) => !a.startsWith("-") && !["dlx", "exec", "run", "--from"].includes(a));
-  if (RUNNERS.has(base) && firstReal) {
-    return safeName(firstReal.replace(/^@[^/]+\//, "").replace(/@[^@/]*$/, "").replace(/==.*$/, "").replace(/^(mcp-server-|server-)/, ""));
-  }
-  if (INTERPRETERS.has(base) && firstReal) {
-    const stem = path.basename(firstReal).replace(/\.[^.]+$/, "");
-    if (["index", "server", "main", "__main__", "cli"].includes(stem)) {
-      const parent = path.basename(path.dirname(path.resolve(firstReal)));
-      return safeName(parent === "src" || parent === "dist" ? path.basename(path.dirname(path.dirname(path.resolve(firstReal)))) : parent);
-    }
-    return safeName(stem);
-  }
-  return safeName(base);
 }
 
 const expandEnv = (s) => s.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, v) => process.env[v] ?? "");
@@ -281,10 +267,40 @@ async function cmdScan(argv) {
   process.exitCode = secrets.length || r.injection.length ? 2 : 0;
 }
 
+// ------------------------------------------------------------------ audit
+async function cmdAudit(argv) {
+  const f = parseFlags(argv, { live: "bool", json: "bool", config: "list", dir: "list", timeout: "str" });
+  if (f._.length) die(`unexpected "${f._[0]}". To check one file use: mcp-gatehouse audit --config <file>`);
+  const timeoutMs = f.timeout === undefined ? 20000 : Number(f.timeout) * 1000;
+  if (!(timeoutMs > 0)) die("--timeout takes a number of seconds");
+  const home = os.homedir();
+  const abs = (p) => path.resolve(expandHome(p));
+
+  let sources;
+  if (f.config) {
+    // Named files only: this is "check this file", not "check this computer".
+    for (const c of f.config) if (!fs.existsSync(abs(c))) die(`no such file: ${c}`);
+    sources = f.config.map((c) => adHocSource(abs(c)));
+  } else {
+    const dirs = [...new Set([process.cwd(), ...(f.dir || []).map(abs), ...claudeProjectDirs({ home })])];
+    sources = knownSources({ home, projectDirs: dirs });
+  }
+  const read = readSources(sources);
+  const startable = read.servers.filter((s) => !s.disabled).length;
+  if (f.live && startable && !f.json) {
+    process.stderr.write(`Starting ${startable} server(s) to list their tools. No tool is called.\n`);
+  }
+  const report = await runAudit(read, { live: !!f.live, home, timeoutMs });
+  const text = f.json ? JSON.stringify({ version: VERSION, ...report }, null, 2) : renderAudit(report, { version: VERSION });
+  // Exit explicitly (a child that ignores stdin closing must not keep the audit alive), but only
+  // once the report is fully written: a pipe can still be draining when exit is called.
+  process.stdout.write(text + "\n", () => process.exit(report.summary.high || report.summary.medium ? 2 : 0));
+}
+
 // ------------------------------------------------------------------ main
 const argv = process.argv.slice(2);
 const sub = argv[0];
-const commands = { report: cmdReport, pins: cmdPins, approve: cmdApprove, init: cmdInit, check: cmdCheck, scan: cmdScan };
+const commands = { report: cmdReport, pins: cmdPins, approve: cmdApprove, init: cmdInit, check: cmdCheck, scan: cmdScan, audit: cmdAudit };
 
 if (sub === "--help" || sub === "-h" || sub === "help" || argv.length === 0) {
   process.stdout.write(HELP);

@@ -65,6 +65,9 @@ const SECRET_RULES = [
 // Values that look like an assignment but are documentation, types or templates.
 const PLACEHOLDER = /^(?:string|number|integer|boolean|null|none|true|false|undefined|required|optional|redacted|example|changeme|password|your[_-].*|x{3,}.*|\*+|\.{3,}|<.*>|\$\{.*\}|\$[A-Z_][A-Z0-9_]*|%[A-Z_]+%|\{\{.*\}\})$/i;
 
+/** True for documentation words, types and templates that only look like a value. */
+export const isPlaceholder = (value) => PLACEHOLDER.test(String(value));
+
 const token = (id) => `[REDACTED:${id}]`;
 
 /** Redact secrets in one string. Returns { text, findings: {id: count} }. */

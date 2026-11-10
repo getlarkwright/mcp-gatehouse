@@ -13,6 +13,9 @@ server. Every message passes through it in both directions.
                     └─▶ ~/.mcp-gatehouse/audit.jsonl
 ```
 
+It also audits what you already have: `mcp-gatehouse audit` reads the MCP configs on the machine and
+reports secrets in config files, servers with no fixed version, and poisoned tool definitions.
+
 It runs on your machine with no account and no telemetry. The detectors are regular expressions, not a
 model, so nothing you scan leaves the box.
 
@@ -43,8 +46,92 @@ npm install -g mcp-gatehouse
 mcp-gatehouse --help
 ```
 
-To run it without a global install, use `npx -y mcp-gatehouse@0.1.1` wherever the examples below say
+To run it without a global install, use `npx -y mcp-gatehouse@0.2.0` wherever the examples below say
 `mcp-gatehouse`. Pin the version: a security proxy should not change underneath you on its own.
+
+## Audit what is already installed
+
+Before wrapping anything, see what you have. One command reads the MCP config files on the machine
+and lists every server with what is risky about it:
+
+```bash
+mcp-gatehouse audit
+```
+
+```text
+MCP Gatehouse audit 0.2.0: 17 servers in 8 config files
+
+Claude Code (user)  ~/.claude.json
+  MEDIUM  This file holds secrets and other accounts on this computer can read it (mode 644).
+  github     npx -y @modelcontextprotocol/server-github
+      HIGH    A secret (github token) is written in the config (env GITHUB_PERSONAL_ACCESS_TOKEN).
+      MEDIUM  @modelcontextprotocol/server-github has no version set, so every start can run newer code than the code you reviewed.
+      not guarded
+  files      npx -y @modelcontextprotocol/server-filesystem@2025.8.21 /
+      MEDIUM  The server is given the whole disk (/).
+      not guarded
+
+Claude Desktop (user)  ~/.config/Claude/claude_desktop_config.json
+  box        docker run -i --rm --privileged -v /var/run/docker.sock:/var/run/docker.sock --network host ghcr.io/acme/box-mcp
+      HIGH    The container runs with --privileged, which gives it full control of the host.
+      HIGH    The container is given the Docker socket.
+      MEDIUM  The image ghcr.io/acme/box-mcp has no version set, so every start can run newer code than the code you reviewed.
+      MEDIUM  The container shares the host's network, so it can reach every local service.
+      not guarded
+...
+Summary
+  Servers: 17 (1 disabled)   guarded: 1   not guarded: 16
+  Findings: 10 high, 12 medium, 1 low
+
+What to fix first
+  1. [HIGH] Secrets written in config files: github, db, search, nas, pytool
+     Move it out of the file into an environment variable or a secret manager, then rotate it. ...
+```
+
+That sample is the test fixture, which is wrong on purpose.
+
+**Where it looks.** Claude Code (`~/.claude.json`, project `.mcp.json`, the managed file), Claude Desktop,
+Cursor, VS Code, Windsurf, Cline, Roo Code, Gemini CLI, Zed and Codex. It reads their user-level files
+and their project files in the current folder, in any `--dir <path>` you add, and in every project
+Claude Code knows about. `--config <file>` checks one named file instead.
+
+**What it reports.**
+
+| Finding | Severity |
+|---|---|
+| A literal secret in `env`, headers, the URL or the arguments | high |
+| A tool definition that carries instructions for the model, or hides text in invisible characters | high |
+| A start command that pipes a download into a shell | high |
+| Docker with `--privileged`, the Docker socket, or the whole disk mounted | high |
+| Plain `http` to a server | high on the internet, medium on the local network |
+| No fixed version: a bare `npx` or `uvx` package, `@latest`, a range, a Git branch, an untagged image | medium |
+| A Git source set to a version tag instead of a commit hash | low |
+| The whole disk or home folder handed to a server | medium |
+| A config file with a secret in it that other accounts can read | medium |
+| A pinned tool definition that changed and waits for approval | medium |
+| Tools set to run without asking (`autoApprove`, `alwaysAllow`, `trust`) | medium or low |
+
+**It never prints a secret.** Values are classified and replaced with `[REDACTED:<type>]`. The report
+names the place (`env GITHUB_PERSONAL_ACCESS_TOKEN`), not the value. References such as `${VAR}` and
+`${env:VAR}` are not findings.
+
+**It starts nothing by default.** The plain audit only reads files. Tool definitions are checked for
+servers already behind the gatehouse, from their saved pins. To check the rest, add `--live`:
+
+```bash
+mcp-gatehouse audit --live
+```
+
+`--live` starts each server the way your client would (or connects to a remote one), asks for its tool
+list, scans the definitions and stops it. It calls no tool and saves no pins. A server whose start
+command downloads and runs a script is not started. A server that needs a browser sign-in is reported
+as not listed.
+
+`--json` prints the same report for scripts. The exit code is `2` when there is a high or medium
+finding and `0` otherwise, so it can gate a CI job or a laptop check.
+
+Not covered: connectors added inside a claude.ai or ChatGPT account, desktop extensions, and anything a
+server does after it starts.
 
 ## Wrap a server
 
@@ -248,7 +335,8 @@ Know these before you rely on it:
 npm test
 ```
 
-The test suite drives a real MCP client through the gatehouse into a deliberately hostile server
+The audit tests run against a pretend home directory (`test/fixtures/audit-home.mjs`) and never read
+yours. The proxy tests drive a real MCP client through the gatehouse into a deliberately hostile server
 (`test/fixtures/upstream.mjs`). That server leaks secrets, returns injection text, ships a poisoned
 tool description, smuggles instructions in Unicode tag characters and rewrites a tool definition
 between runs. The suite runs over stdio and Streamable HTTP, in both enforce and monitor mode.

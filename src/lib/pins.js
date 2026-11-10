@@ -26,6 +26,27 @@ export function hashTool(tool) {
 
 export const safeName = (name) => String(name).replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80) || "server";
 
+const RUNNERS = new Set(["npx", "bunx", "pnpm", "yarn", "uvx", "pipx", "deno", "docker"]);
+const INTERPRETERS = new Set(["node", "python", "python3", "bun", "ruby"]);
+
+/** Best-effort readable server name from the command line. */
+export function deriveName(command, args) {
+  const base = path.basename(command).replace(/\.(exe|cmd|bat)$/i, "");
+  const firstReal = args.find((a) => !a.startsWith("-") && !["dlx", "exec", "run", "--from"].includes(a));
+  if (RUNNERS.has(base) && firstReal) {
+    return safeName(firstReal.replace(/^@[^/]+\//, "").replace(/@[^@/]*$/, "").replace(/==.*$/, "").replace(/^(mcp-server-|server-)/, ""));
+  }
+  if (INTERPRETERS.has(base) && firstReal) {
+    const stem = path.basename(firstReal).replace(/\.[^.]+$/, "");
+    if (["index", "server", "main", "__main__", "cli"].includes(stem)) {
+      const parent = path.basename(path.dirname(path.resolve(firstReal)));
+      return safeName(parent === "src" || parent === "dist" ? path.basename(path.dirname(path.dirname(path.resolve(firstReal)))) : parent);
+    }
+    return safeName(stem);
+  }
+  return safeName(base);
+}
+
 export function pinFile(server) {
   return path.join(PIN_DIR, `${safeName(server)}.json`);
 }
